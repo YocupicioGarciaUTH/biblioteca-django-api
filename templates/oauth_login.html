@@ -28,64 +28,94 @@
             border: 4px solid #f3f3f3;
             border-top: 4px solid #667eea;
             border-radius: 50%;
-            width: 50px; height: 50px;
+            width: 40px;
+            height: 40px;
             animation: spin 1s linear infinite;
             margin: 20px auto;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .result { margin-top: 30px; padding: 20px; border-radius: 8px; display: none; }
-        .success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
-        .error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
-        .user-info { background: #f0f4ff; padding: 15px; border-radius: 8px; margin-top: 15px; }
-        .token-display {
-            background: #2d2d2d; color: #4ec9b0; padding: 15px; border-radius: 8px;
-            margin-top: 15px; word-wrap: break-word; font-family: 'Courier New', monospace; font-size: 0.9em;
-        }
+        .result { display: none; padding: 20px; border-radius: 8px; margin-top: 20px; }
+        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
         .btn {
-            display: inline-block; padding: 10px 20px; margin-top: 15px; margin-right: 10px;
-            background: #667eea; color: white; text-decoration: none; border-radius: 5px;
+            display: inline-block;
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-top: 15px;
+            transition: background 0.3s;
         }
-        .btn-red { background: #e53e3e; }
+        .btn:hover { background: #764ba2; }
+        .user-info { text-align: left; margin-top: 20px; border-top: 1px solid #eee; padding-top: 20px; }
+        .token-display {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: monospace;
+            word-break: break-all;
+            font-size: 0.85em;
+            margin-top: 15px;
+            border: 1px solid #ddd;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🔐 Login con Google</h1>
+        <h1>🚀 Autenticación Google</h1>
+        
         <div id="loading" class="loading">
             <div class="spinner"></div>
-            <p>Procesando autenticación...</p>
+            <p id="status-text">Iniciando conexión con Google...</p>
         </div>
+
         <div id="result" class="result"></div>
     </div>
 
     <script>
+        // 1. Obtener parámetros de la URL
         const urlParams = new URLSearchParams(window.location.search);
-        
-        // 1. Intentar obtener tokens de la URL (si venimos redirigidos de Django)
         const accessToken = urlParams.get('access_token');
         const refreshToken = urlParams.get('refresh_token');
-        const userInfoRaw = urlParams.get('user_info');
-        const googleInfoRaw = urlParams.get('google_info');
-        const message = urlParams.get('message');
         const error = urlParams.get('error');
 
+        // 2. Lógica Principal
         if (error) {
-            showError("Error: " + decodeURIComponent(error));
-        } else if (accessToken) {
-            // 2. Guardar en localStorage
+            // Si Google o el servidor devolvieron un error
+            showError("Error de autenticación: " + decodeURIComponent(error));
+        } 
+        else if (accessToken) {
+            // Si ya regresamos del callback con el token
             localStorage.setItem('access_token', accessToken);
             localStorage.setItem('refresh_token', refreshToken);
-
-            // 3. Mostrar pantalla de éxito
-            const user = JSON.parse(decodeURIComponent(userInfoRaw));
-            const google = JSON.parse(decodeURIComponent(googleInfoRaw));
-            showSuccess(user, google, accessToken, message);
-        } else {
-            // 4. Si no hay nada, pedir URL de redirección al backend
+            
+            try {
+                const user = JSON.parse(decodeURIComponent(urlParams.get('user_info')));
+                const google = JSON.parse(decodeURIComponent(urlParams.get('google_info')));
+                showSuccess(user, google, accessToken, urlParams.get('message') || '¡Login Exitoso!');
+            } catch (e) {
+                showSuccess({email: 'Usuario'}, {}, accessToken, '¡Login Exitoso!');
+            }
+        } 
+        else {
+            // SI NO HAY TOKEN: Vamos a pedir la URL al backend (Evita el error 'undefined')
             fetch('/api/auth/google/redirect/')
-                .then(res => res.json())
-                .then(data => { window.location.href = data.auth_url; })
-                .catch(err => showError("No se pudo conectar con el servidor"));
+                .then(response => {
+                    if (!response.ok) throw new Error('No se pudo obtener la URL de Google');
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.auth_url) {
+                        // Redirigir a Google
+                        window.location.href = data.auth_url;
+                    } else {
+                        showError("El servidor no devolvió una URL válida.");
+                    }
+                })
+                .catch(err => {
+                    showError("Error al conectar con el servidor: " + err.message);
+                });
         }
 
         function showSuccess(user, google, token, msg) {
@@ -96,17 +126,16 @@
             res.innerHTML = `
                 <h2>✅ ${msg}</h2>
                 <div class="user-info">
-                    <h3>👤 Datos del Usuario</h3>
-                    <p><strong>Nombre:</strong> ${user.first_name} ${user.last_name}</p>
+                    <h3>👤 Perfil detectado:</h3>
+                    <p><strong>Nombre:</strong> ${user.first_name || ''} ${user.last_name || ''}</p>
                     <p><strong>Email:</strong> ${user.email}</p>
-                    ${google.picture ? `<img src="${google.picture}" width="80" style="border-radius:50%">` : ''}
+                    ${google.picture ? `<img src="${google.picture}" width="70" style="border-radius:50%; margin-top:10px;">` : ''}
                 </div>
                 <div class="token-display">
-                    <strong>🔑 Token Guardado:</strong><br>${token.substring(0, 60)}...
+                    <strong>🔑 JWT Access Token:</strong><br>${token.substring(0, 50)}...
                 </div>
-                <a href="/api/" class="btn">Ir a la API</a>
-                <a href="/" class="btn">Volver al Inicio</a>
-                <a href="#" onclick="localStorage.clear();location.reload();" class="btn btn-red">Cerrar Sesión</a>
+                <a href="/api/" class="btn">📚 Explorar API</a>
+                <a href="/" class="btn" style="background:#6c757d">🏠 Inicio</a>
             `;
         }
 
@@ -115,7 +144,11 @@
             const res = document.getElementById('result');
             res.className = 'result error';
             res.style.display = 'block';
-            res.innerHTML = `<h2>❌ Error</h2><p>${msg}</p><a href="/" class="btn">Volver al Inicio</a>`;
+            res.innerHTML = `
+                <h2>❌ Error</h2>
+                <p>${msg}</p>
+                <a href="/" class="btn">Volver a intentar</a>
+            `;
         }
     </script>
 </body>

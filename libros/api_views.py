@@ -1,25 +1,21 @@
 from rest_framework import viewsets, filters, status
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes, throttle_classes
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
+from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, IsAdminUser
 from django_filters.rest_framework import DjangoFilterBackend
+from django.utils import timezone
 
+from .external_services import GoogleBooksAPI
 from .models import Categoria, Autor, Libro, Prestamo
 from .serializers import (
     CategoriaSerializer, AutorSerializer, 
     LibroSerializer, PrestamoSerializer
 )
-
+# Importamos tu clase de throttling personalizada
+from .throttles import BurstRateThrottle 
 
 class CategoriaViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet para Categorías
-    - GET /api/categorias/ - Listar todas
-    - POST /api/categorias/ - Crear nueva
-    - GET /api/categorias/{id}/ - Ver detalle
-    - PUT /api/categorias/{id}/ - Actualizar
-    - DELETE /api/categorias/{id}/ - Eliminar
-    """
+    """ViewSet para Categorías"""
     queryset = Categoria.objects.all()
     serializer_class = CategoriaSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
@@ -31,7 +27,6 @@ class CategoriaViewSet(viewsets.ModelViewSet):
 
 class AutorViewSet(viewsets.ModelViewSet):
     """ViewSet para Autores"""
-    
     queryset = Autor.objects.all()
     serializer_class = AutorSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
@@ -52,7 +47,6 @@ class AutorViewSet(viewsets.ModelViewSet):
 
 class LibroViewSet(viewsets.ModelViewSet):
     """ViewSet para Libros"""
-    
     queryset = Libro.objects.filter(activo=True).select_related('autor', 'categoria')
     serializer_class = LibroSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
@@ -74,10 +68,7 @@ class LibroViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'])
     def actualizar_stock(self, request, pk=None):
-        """
-        Endpoint: POST /api/libros/{id}/actualizar_stock/
-        Body: {"cantidad": 5}  (puede ser negativo para restar)
-        """
+        """POST /api/libros/{id}/actualizar_stock/"""
         libro = self.get_object()
         cantidad = request.data.get('cantidad', 0)
         
@@ -96,7 +87,6 @@ class LibroViewSet(viewsets.ModelViewSet):
 
 class PrestamoViewSet(viewsets.ModelViewSet):
     """ViewSet para Préstamos"""
-    
     queryset = Prestamo.objects.all().select_related('libro', 'usuario')
     serializer_class = PrestamoSerializer
     permission_classes = [IsAuthenticated]
@@ -108,16 +98,11 @@ class PrestamoViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """Al crear préstamo, asignar usuario actual y actualizar stock"""
         prestamo = serializer.save(usuario=self.request.user)
-        prestamo.libro.actualizar_stock(-1)  # Reducir stock en 1
+        prestamo.libro.actualizar_stock(-1) 
     
     @action(detail=True, methods=['post'])
     def devolver(self, request, pk=None):
-        """
-        Endpoint: POST /api/prestamos/{id}/devolver/
-        Marca el préstamo como devuelto
-        """
-        from django.utils import timezone
-        
+        """POST /api/prestamos/{id}/devolver/"""
         prestamo = self.get_object()
         
         if prestamo.estado == Prestamo.DEVUELTO:
@@ -130,8 +115,40 @@ class PrestamoViewSet(viewsets.ModelViewSet):
         prestamo.estado = Prestamo.DEVUELTO
         prestamo.save()
         
-        # Incrementar stock del libro
         prestamo.libro.actualizar_stock(1)
         
         serializer = self.get_serializer(prestamo)
         return Response(serializer.data)
+
+# --- FUNCIONES DE API ADICIONALES ---
+
+@api_view(['POST'])
+@permission_classes([IsAdminUser])
+@throttle_classes([BurstRateThrottle]) # ← Protegemos la consulta externa
+def importar_desde_google_books(request):
+    """Importar libro desde Google Books por ISBN"""
+    isbn = request.data.get('isbn')
+    
+    if not isbn:
+        return Response({
+            'error': 'El campo ISBN es requerido'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        # Buscar en Google Books mediante el servicio externo
+        data = GoogleBooksAPI.buscar_libro(isbn)
+        
+        if not data:
+            return Response({
+                'error': 'Libro no encontrado en Google Books'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        return Response({
+            'mensaje': 'Libro encontrado con éxito',
+            'data': data
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Error en la comunicación con Google Books: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

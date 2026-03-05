@@ -18,15 +18,16 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            padding: 20px;
         }
         
         .container {
             background: white;
-            padding: 50px;
+            padding: 40px;
             border-radius: 15px;
             box-shadow: 0 10px 50px rgba(0,0,0,0.2);
             max-width: 500px;
-            width: 90%;
+            width: 100%;
             text-align: center;
         }
         
@@ -38,66 +39,80 @@
         
         .subtitle {
             color: #666;
-            margin-bottom: 40px;
-            font-size: 1.1em;
+            margin-bottom: 30px;
         }
         
         .btn {
-            display: inline-block;
-            padding: 15px 40px;
-            margin: 10px;
-            border-radius: 8px;
-            text-decoration: none;
-            font-weight: bold;
-            font-size: 1.1em;
-            transition: all 0.3s ease;
-            cursor: pointer;
+            display: block;
+            width: 100%;
+            padding: 15px;
+            margin-bottom: 15px;
             border: none;
-        }
-        
-        .btn-google {
-            background: #4285f4;
+            border-radius: 8px;
             color: white;
+            font-weight: bold;
+            text-decoration: none;
+            transition: transform 0.2s, box-shadow 0.2s;
+            cursor: pointer;
         }
         
-        .btn-google:hover {
-            background: #357ae8;
+        .btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(66, 133, 244, 0.4);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
         }
         
-        .btn-jwt {
-            background: #11998e;
-            color: white;
-        }
-        
-        .btn-jwt:hover {
-            background: #0e8074;
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(17, 153, 142, 0.4);
-        }
-        
-        .btn-api {
-            background: #667eea;
-            color: white;
-        }
-        
-        .btn-api:hover {
-            background: #5568d3;
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
-        }
+        .btn-google { background-color: #db4437; }
+        .btn-jwt { background-color: #00b894; }
+        .btn-api { background-color: #0984e3; }
         
         .divider {
-            margin: 30px 0;
             height: 1px;
-            background: #ddd;
+            background: #eee;
+            margin: 20px 0;
         }
+
+        /* --- ESTILOS DEL CHAT --- */
+        .chat-section {
+            margin-top: 30px;
+            text-align: left;
+            border-top: 2px solid #eee;
+            padding-top: 20px;
+        }
+
+        #chat-messages {
+            height: 150px;
+            overflow-y: auto;
+            background: #f9f9f9;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 10px;
+            font-size: 0.9em;
+            border: 1px solid #ddd;
+        }
+
+        .chat-input-group {
+            display: flex;
+            gap: 5px;
+        }
+
+        #chat-input {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+
+        .btn-send {
+            padding: 8px 15px;
+            background: #764ba2;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        /* ------------------------ */
         
         .info {
-            background: #f0f4ff;
-            padding: 20px;
-            border-radius: 8px;
             margin-top: 30px;
             text-align: left;
         }
@@ -110,10 +125,7 @@
         .info ul {
             list-style-position: inside;
             color: #555;
-        }
-        
-        .info li {
-            margin: 5px 0;
+            font-size: 0.9em;
         }
     </style>
 </head>
@@ -122,35 +134,84 @@
         <h1>🏛️ Biblioteca UTH</h1>
         <p class="subtitle">Sistema de Gestión de Biblioteca</p>
         
-        <!-- Login con Google -->
-        <a href="{% url 'oauth_login' %}" class="btn btn-google">
-            🔐 Login con Google
-        </a>
-        
-        <div class="divider"></div>
-        
-        <!-- Login tradicional con JWT -->
-        <a href="{% url 'jwt_login_page' %}" class="btn btn-jwt">
-            🔑 Login con JWT
-        </a>
-        
-        <div class="divider"></div>
-        
-        <!-- Ver API -->
-        <a href="/api/" class="btn btn-api">
-            📚 Explorar API REST
-        </a>
-        
+        <a href="{% url 'oauth_login' %}" class="btn btn-google">🔐 Login con Google</a>
+        <a href="{% url 'jwt_login_page' %}" class="btn btn-jwt">🔑 Login con JWT</a>
+        <a href="/api/" class="btn btn-api">📚 Explorar API REST</a>
+
+        <div class="chat-section">
+            <h3>💬 Chat en Vivo</h3>
+            <div id="chat-messages"></div>
+            <div class="chat-input-group">
+                <input type="text" id="chat-input" placeholder="Escribe un mensaje...">
+                <button class="btn-send" onclick="enviarMensaje()">Enviar</button>
+            </div>
+        </div>
+
         <div class="info">
-            <h3>ℹ️ Información del Sistema</h3>
+            <h3>ℹ️ Estado del Sistema</h3>
             <ul>
-                <li>✅ API REST con Django REST Framework</li>
-                <li>✅ Autenticación JWT</li>
-                <li>✅ OAuth 2.0 con Google</li>
-                <li>✅ MySQL como base de datos</li>
-                <li>✅ Gestión completa de biblioteca</li>
+                <li>✅ Servidor ASGI (Daphne) Activo</li>
+                <li>✅ WebSockets habilitados</li>
+                <li>✅ Autenticación OAuth2 y JWT</li>
             </ul>
         </div>
     </div>
+
+    <script>
+        // Configuración del WebSocket
+        // Usamos la ruta '/ws/libros/' que definimos en routing.py
+        const chatSocket = new WebSocket(
+            (window.location.protocol === 'https:' ? 'wss://' : 'ws://') 
+            + window.location.host 
+            + '/ws/libros/'
+        );
+
+        chatSocket.onopen = function(e) {
+            console.log('✅ WebSocket conectado a la Biblioteca');
+            addMessage('Sistema', 'Conectado al chat en tiempo real');
+        };
+
+        chatSocket.onmessage = function(e) {
+            const data = JSON.parse(e.data);
+            console.log('Mensaje recibido:', data);
+            
+            // Si el servidor envía un mensaje o una notificación de libro
+            const user = data.username || 'Sistema';
+            const msg = data.message || data.titulo || 'Nuevo evento detectado';
+            
+            addMessage(user, msg);
+        };
+
+        chatSocket.onclose = function(e) {
+            console.error('❌ WebSocket cerrado inesperadamente');
+            addMessage('Sistema', 'Conexión perdida. Reintenta recargando.');
+        };
+
+        function enviarMensaje() {
+            const input = document.getElementById('chat-input');
+            const mensaje = input.value.trim();
+            
+            if (mensaje && chatSocket.readyState === WebSocket.OPEN) {
+                chatSocket.send(JSON.stringify({
+                    'message': mensaje,
+                    'username': '{{ user.username|default:"Invitado" }}'
+                }));
+                input.value = '';
+            }
+        }
+
+        function addMessage(username, message) {
+            const messagesDiv = document.getElementById('chat-messages');
+            const msgElement = document.createElement('p');
+            msgElement.innerHTML = `<strong>${username}:</strong> ${message}`;
+            messagesDiv.appendChild(msgElement);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        // Enviar con la tecla Enter
+        document.getElementById('chat-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') enviarMensaje();
+        });
+    </script>
 </body>
 </html>

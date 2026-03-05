@@ -1,5 +1,6 @@
 from pathlib import Path
 from datetime import timedelta  # ← Agregar al inicio del archivo
+from django.urls import path, include
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -14,33 +15,53 @@ SECRET_KEY = 'django-insecure-pu2jb$jlm8(m6z0ep02w)9rdx)dw&7ajn)a_kd+73h2h_=3#cm
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
+if not DEBUG:
+    # Forzar HTTPS
+    SECURE_SSL_REDIRECT = True
+    
+    # Cookies seguras
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    
+    # Headers de seguridad
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = 'DENY'
+    
+    # HSTS (HTTP Strict Transport Security)
+    SECURE_HSTS_SECONDS = 31536000  # 1 año
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    
+    # Proxy SSL headers
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
 ALLOWED_HOSTS = ['localhost', '127.0.0.1']
 
 
 # Application definition
 
 INSTALLED_APPS = [
+    'daphne',  # ← DEBE SER LA PRIMERA
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'django.contrib.sites',  # ← AGREGAR (requerido por allauth)
-    
-    # Third-party apps
+    'django.contrib.sites',
+
+    # Apps de terceros
     'rest_framework',
     'corsheaders',
-    'django_filters',
-    'rest_framework_simplejwt',
-    'oauth2_provider',  # ← AGREGAR (Django OAuth Toolkit)
-    'allauth',  # ← AGREGAR
-    'allauth.account',  # ← AGREGAR
-    'allauth.socialaccount',  # ← AGREGAR
-    'allauth.socialaccount.providers.google',  # ← AGREGAR
-    'django_extensions',
+    'channels',         # ← AGREGAR
+    'graphene_django',    # ← AGREGAR
+    'oauth2_provider',
+    'allauth',
+    'allauth.account',
+    'allauth.socialaccount',
+    'allauth.socialaccount.providers.google',
 
-    # Tu aplicación
     'libros',
 ]
 
@@ -53,7 +74,9 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'allauth.account.middleware.AccountMiddleware',  # ← AGREGAR
+    'allauth.account.middleware.AccountMiddleware',
+    'libros.middleware.SecurityMiddleware',
+    'libros.middleware.RateLimitMiddleware',  # ← AGREGAR
 ]
 
 ROOT_URLCONF = 'biblioteca_project.urls'
@@ -74,7 +97,9 @@ TEMPLATES = [
     },
 ]
 
+# Busca la línea de WSGI y agrega la de ASGI justo debajo
 WSGI_APPLICATION = 'biblioteca_project.wsgi.application'
+ASGI_APPLICATION = 'biblioteca_project.asgi.application' # ← AGREGA ESTA LÍNEA
 
 
 # Database
@@ -124,9 +149,33 @@ AUTH_PASSWORD_VALIDATORS = [
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "https://tudominio.com",
+    "https://www.tudominio.com",
 ]
+
 CORS_ALLOW_CREDENTIALS = True
 
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://tudominio.com",
+    "https://www.tudominio.com",
+]
+
+if not DEBUG:
+    CSRF_COOKIE_SECURE = True
+    CSRF_COOKIE_HTTPONLY = True
+    CSRF_COOKIE_SAMESITE = 'Strict'
 
 # =======================
 # REST FRAMEWORK CONFIG
@@ -156,6 +205,18 @@ REST_FRAMEWORK = {
         'rest_framework.filters.SearchFilter',
         'rest_framework.filters.OrderingFilter',
     ],
+
+        'DEFAULT_THROTTLE_CLASSES': [
+        'libros.throttles.BurstRateThrottle',
+        'libros.throttles.SustainedRateThrottle',
+    ],
+    
+    'DEFAULT_THROTTLE_RATES': {
+        'burst': '60/min',        # 60 por minuto
+        'sustained': '1000/day',  # 1000 por día
+        'anon_burst': '20/min',   # Anónimos: 20 por minuto
+        'premium': '10000/day',   # Premium: 10000 por día
+    }
 }
 
 # =======================
@@ -252,19 +313,15 @@ SOCIALACCOUNT_PROVIDERS = {
 # =======================
 # Configuración para django-oauth-toolkit
 OAUTH2_PROVIDER = {
-    # Tiempo de vida de los tokens
-    'ACCESS_TOKEN_EXPIRE_SECONDS': 3600,  # 1 hora
-    'REFRESH_TOKEN_EXPIRE_SECONDS': 86400 * 7,  # 7 días
-    
-    # Scopes disponibles
     'SCOPES': {
-        'read': 'Acceso de lectura',
-        'write': 'Acceso de escritura',
+        'read': 'Read scope - Permite leer datos',
+        'write': 'Write scope - Permite escribir datos',
+        'groups': 'Access to groups - Acceso a grupos de usuario'
     },
-    
-    # Tipo de token por defecto
-    'ACCESS_TOKEN_MODEL': 'oauth2_provider.AccessToken',
-    'REFRESH_TOKEN_MODEL': 'oauth2_provider.RefreshToken',
+    'ACCESS_TOKEN_EXPIRE_SECONDS': 3600,  # 1 hora
+    'REFRESH_TOKEN_EXPIRE_SECONDS': 86400,  # 1 día
+    'AUTHORIZATION_CODE_EXPIRE_SECONDS': 600,  # 10 minutos
+    'ROTATE_REFRESH_TOKEN': True,
 }
 
 # Static files (CSS, JavaScript, Images)
@@ -277,3 +334,9 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 SILENCED_SYSTEM_CHECKS = ['models.W036']
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels.layers.InMemoryChannelLayer'
+    }
+}

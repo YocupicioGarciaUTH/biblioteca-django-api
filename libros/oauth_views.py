@@ -2,7 +2,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.shortcuts import redirect
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -12,11 +12,15 @@ import requests
 import logging
 import json
 
+# Importamos tu clase de throttling personalizada
+from .throttles import BurstRateThrottle 
+
 logger = logging.getLogger(__name__)
 User = get_user_model()
 
 @api_view(['POST', 'GET'])
 @permission_classes([AllowAny])
+@throttle_classes([BurstRateThrottle]) # Protegemos el callback
 def google_oauth_callback(request):
     # 1. Obtener code de POST o GET
     code = request.data.get('code') or request.query_params.get('code')
@@ -97,7 +101,7 @@ def google_oauth_callback(request):
             'picture': user_data.get('picture'),
         })
         
-        # Redirección final
+        # Redirección final con los tokens y datos del usuario
         redirect_url = (
             f'http://127.0.0.1:8000/oauth/login/?' 
             f'access_token={access_token}&'
@@ -119,16 +123,17 @@ def google_oauth_callback(request):
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
+@throttle_classes([BurstRateThrottle]) # Protegemos el generador de URLs
 def google_oauth_redirect(request):
     """
-    Endpoint que genera la URL de Google correctamente.
+    Genera la URL de autorización de Google.
     """
     try:
         google_config = settings.SOCIALACCOUNT_PROVIDERS['google']['APP']
         scopes = settings.SOCIALACCOUNT_PROVIDERS['google']['SCOPE']
         
         params = {
-            'client_id': google_config["client_id"].strip(), # .strip() quita espacios accidentales
+            'client_id': google_config["client_id"].strip(),
             'redirect_uri': 'http://127.0.0.1:8000/api/auth/google/callback/',
             'scope': " ".join(scopes),
             'response_type': 'code',
@@ -136,10 +141,8 @@ def google_oauth_redirect(request):
             'prompt': 'consent',
         }
         
-        # Generar URL limpia
         auth_url = f'https://accounts.google.com/o/oauth2/v2/auth?{urllib.parse.urlencode(params)}'
         
         return Response({'auth_url': auth_url}, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
